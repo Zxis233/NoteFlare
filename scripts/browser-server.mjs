@@ -1,0 +1,11 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { resolve } from 'node:path';
+const cli = resolve('node_modules/wrangler/bin/wrangler.js');
+const config = ['--config', 'wrangler.toml', '--persist-to', `.wrangler/browser-${Date.now()}`];
+const migration = spawn(process.execPath, [cli, 'd1', 'migrations', 'apply', 'DB', '--local', ...config], { stdio: 'inherit', env: { ...process.env, CI: 'true' } });
+const [code] = await once(migration, 'exit');
+if (code) process.exit(code);
+const server = spawn(process.execPath, [cli, 'dev', '--ip', '127.0.0.1', '--port', '8792', ...config], { stdio: 'inherit', env: { ...process.env, CI: 'true' } });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.kill(); process.exit(0); });
+server.on('exit', code => process.exit(code ?? 0));
