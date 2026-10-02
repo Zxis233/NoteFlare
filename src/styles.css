@@ -43,7 +43,17 @@ button {
 
 button:disabled {
     opacity: .4;
-    cursor: not-allowed
+    cursor: default
+}
+
+/* Pending actions stay visually stable; disabled still prevents repeat clicks. */
+button[aria-busy="true"] {
+    opacity: 1;
+    cursor: progress
+}
+
+button[data-action="copy"][aria-busy="true"] {
+    cursor: pointer
 }
 
 a {

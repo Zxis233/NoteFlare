@@ -23,6 +23,7 @@ export function MarkdownPreview({ html }: { html: string }) {
     if (previous) clearTimeout(previous);
     timers.current.delete(button);
     button.disabled = true;
+    button.setAttribute("aria-busy", "true");
     let success = false;
     try {
       await navigator.clipboard.writeText(code.textContent ?? "");
@@ -32,7 +33,7 @@ export function MarkdownPreview({ html }: { html: string }) {
     }
     if (!article.contains(button) || !button.isConnected) return;
     button.disabled = false;
-    button.textContent = success ? "已复制" : "复制失败";
+    button.removeAttribute("aria-busy");
     button.setAttribute(
       "aria-label",
       success ? "代码已复制" : "代码复制失败，请手动选择复制",
@@ -46,7 +47,6 @@ export function MarkdownPreview({ html }: { html: string }) {
       setTimeout(
         () => {
           if (button.isConnected) {
-            button.textContent = "复制";
             button.setAttribute("aria-label", "复制代码");
             button.title = "复制代码";
             delete button.dataset.state;

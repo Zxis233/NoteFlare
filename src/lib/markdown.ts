@@ -102,7 +102,7 @@ for (const rule of ["fence", "code_block"] as const) {
   const render = markdownParser.renderer.rules[rule]!;
   markdownParser.renderer.rules[rule] = (...args) =>
     '<div class="code-block"><div class="code-block-toolbar">' +
-    '<button type="button" class="code-block-copy" aria-label="复制代码" aria-live="polite" title="复制代码">复制</button>' +
+    '<button type="button" class="code-block-copy" data-action="copy" aria-label="复制代码" aria-live="polite" title="复制代码"></button>' +
     "</div>" +
     render(...args) +
     "</div>\n";

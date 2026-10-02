@@ -235,6 +235,7 @@ export function Admin({
           <button
             className="button primary save-settings"
             disabled={busy}
+            aria-busy={busy}
             onClick={() => void save()}
           >
             {busy ? (
@@ -266,6 +267,7 @@ export function Admin({
             className="button secondary"
             disabled={cleaning || !stats}
             onClick={() => void cleanup("expired")}
+            aria-busy={cleaning}
           >
             {cleaning ? (
               <LoaderCircle className="spin" size={15} />
@@ -322,6 +324,7 @@ export function Admin({
               <button
                 className="button danger"
                 disabled={confirmation !== "清空全部" || cleaning}
+                aria-busy={cleaning}
                 onClick={() => void cleanup("all")}
               >
                 {cleaning ? "正在清空…" : "确认清空"}

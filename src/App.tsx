@@ -145,6 +145,7 @@ export function App() {
                 className="button ghost"
                 onClick={() => void newNote()}
                 disabled={creating}
+                aria-busy={creating}
               >
                 {creating ? (
                   <LoaderCircle className="spin" size={15} />

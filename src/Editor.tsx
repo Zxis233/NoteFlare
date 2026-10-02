@@ -330,6 +330,8 @@ export function Editor({
               className="icon-button"
               onClick={() => void copyContent()}
               disabled={!loaded || !content || copyStatus === "copying"}
+              aria-busy={copyStatus === "copying"}
+              data-action="copy"
               title={copyStatus === "copied" ? "已复制" : "复制 Markdown"}
               aria-label={
                 copyStatus === "copied" ? "已复制 Markdown" : "复制 Markdown"
@@ -440,6 +442,7 @@ export function Editor({
             <span className="status-detail">{content.length} 字符</span>
             <button
               onClick={() => void save()}
+              aria-busy={status === "saving"}
               disabled={
                 !loaded ||
                 missing ||
