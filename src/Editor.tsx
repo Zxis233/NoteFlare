@@ -10,7 +10,9 @@ import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
-import MarkdownIt from "markdown-it";
+import { markdownParser } from "./lib/markdown";
+import { MarkdownPreview } from "./MarkdownPreview";
+import "./highlight.css";
 import DOMPurify from "dompurify";
 import {
   Check,
@@ -18,6 +20,7 @@ import {
   Cloud,
   CloudOff,
   Columns2,
+  Copy,
   Download,
   FileText,
   LoaderCircle,
@@ -28,7 +31,6 @@ import {
 import { api, ApiError, storage } from "./api";
 import { MAX_BYTES, type Note, type Settings } from "../shared/types";
 
-const parser = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const theme = EditorView.theme(
   {
     "&": {
@@ -90,6 +92,9 @@ export function Editor({
     "new" | "dirty" | "saving" | "saved" | "error"
   >("new");
   const [message, setMessage] = useState("");
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied">(
+    "idle",
+  );
   const [preview, setPreview] = useState(storage.get("nf:preview") !== "off");
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
   const [wrap, setWrap] = useState(true);
@@ -226,7 +231,7 @@ export function Editor({
   const previewContent = useDeferredValue(content);
   const html = useMemo(
     () =>
-      DOMPurify.sanitize(parser.render(previewContent), {
+      DOMPurify.sanitize(markdownParser.render(previewContent), {
         USE_PROFILES: { html: true },
       }),
     [previewContent],
@@ -243,6 +248,26 @@ export function Editor({
     setPreview(!preview);
     storage.set("nf:preview", preview ? "off" : "on");
   };
+  useEffect(() => {
+    if (copyStatus !== "copied") return;
+    const timer = setTimeout(() => setCopyStatus("idle"), 1800);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
+  async function copyContent() {
+    if (copyStatus === "copying") return;
+    setCopyStatus("copying");
+    try {
+      await navigator.clipboard.writeText(current.current);
+      if (mounted.current) setCopyStatus("copied");
+    } catch {
+      if (mounted.current) {
+        setCopyStatus("idle");
+        setMessage(
+          "无法复制内容，请允许浏览器访问剪贴板，或在编辑区手动选择并复制。",
+        );
+      }
+    }
+  }
   function download() {
     const url = URL.createObjectURL(
       new Blob([current.current], { type: "text/markdown;charset=utf-8" }),
@@ -300,6 +325,22 @@ export function Editor({
               aria-label="下载 Markdown"
             >
               <Download size={17} />
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => void copyContent()}
+              disabled={!loaded || !content || copyStatus === "copying"}
+              title={copyStatus === "copied" ? "已复制" : "复制 Markdown"}
+              aria-label={
+                copyStatus === "copied" ? "已复制 Markdown" : "复制 Markdown"
+              }
+              aria-live="polite"
+            >
+              {copyStatus === "copied" ? (
+                <Check size={17} />
+              ) : (
+                <Copy size={17} />
+              )}
             </button>
             <span className="toolbar-divider" />
             <button
@@ -361,10 +402,7 @@ export function Editor({
               预览 <span>PREVIEW</span>
             </div>
             {content ? (
-              <article
-                className="markdown-body"
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
+              <MarkdownPreview html={html} />
             ) : (
               <div className="preview-empty">
                 <div className="preview-icon">

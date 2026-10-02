@@ -39,6 +39,8 @@ NoteFlare 面向个人及少量熟人的日常记录、文本传递和 Markdown 
 |   ⚙️   | 管理面板      | 外观设置、数量统计、过期清理及清空确认，不公开列举正文 |
 |   🛡️   | 访问保护      | 管理端验证 Access JWT，笔记接口限流，Markdown 安全处理 |
 
+预览区代码高亮仅加载以下语言：**Verilog、SystemVerilog、JSON、Bash、YAML、TOML、C、C++、Python、INI、JavaScript、HTML、CSS、Tcl、Diff、Makefile、PowerShell**。在围栏代码块后标注语言即可，名称不区分大小写，也支持 `sv`、`sh`、`yml`、`py`、`js`、`tk`、`patch`、`make`、`mk`、`mak`、`ps1`、`ps` 等别名。未标注或不支持的语言按纯文本显示，不自动猜测语言。
+
 ## 快速开始
 
 需要 Node.js 22.12+ 与 npm。首次安装需要联网下载依赖；本地运行不需要 Cloudflare 账号。
@@ -75,15 +77,15 @@ npm run preview
 
 ## 技术栈
 
-| 层级       | 技术                                   |
-| ---------- | -------------------------------------- |
-| 界面       | React · TypeScript · Vite              |
-| 编辑与预览 | CodeMirror 6 · markdown-it · DOMPurify |
-| API        | Cloudflare Workers · Hono              |
-| 数据库     | Cloudflare D1                          |
-| 静态资源   | Workers Static Assets                  |
-| 管理认证   | Cloudflare Access                      |
-| 定时维护   | Workers Cron Triggers                  |
+| 层级       | 技术                                                             |
+| ---------- | ---------------------------------------------------------------- |
+| 界面       | React · TypeScript · Vite                                        |
+| 编辑与预览 | CodeMirror 6 · markdown-it · highlight.js（指定语言）· DOMPurify |
+| API        | Cloudflare Workers · Hono                                        |
+| 数据库     | Cloudflare D1                                                    |
+| 静态资源   | Workers Static Assets                                            |
+| 管理认证   | Cloudflare Access                                                |
+| 定时维护   | Workers Cron Triggers                                            |
 
 当前版本仅使用 Workers 与 D1，无需配置 KV 或 R2。
 
