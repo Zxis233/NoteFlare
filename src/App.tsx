@@ -101,7 +101,7 @@ export function App() {
           <img
             src={config.backgroundUrl}
             alt=""
-            referrerPolicy="no-referrer"
+            referrerPolicy="origin"
             onError={() => setBackgroundFailed(true)}
           />
           <div

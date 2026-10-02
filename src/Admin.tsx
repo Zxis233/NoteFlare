@@ -172,7 +172,7 @@ export function Admin({
             {form.backgroundUrl.startsWith("https://") && !previewError && (
               <img
                 src={form.backgroundUrl}
-                referrerPolicy="no-referrer"
+                referrerPolicy="origin"
                 alt="背景预览"
                 onError={() => setPreviewError(true)}
               />
