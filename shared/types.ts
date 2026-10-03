@@ -1,6 +1,7 @@
 export const MAX_BYTES = 200 * 1024;
 export const DAY = 86_400_000;
-export interface Settings {
+import type { AttachmentSettings, AttachmentUsage } from "./attachments";
+export interface Settings extends AttachmentSettings {
   backgroundUrl: string;
   overlay: number;
   linkLength: number;
@@ -14,6 +15,7 @@ export interface Note {
   expiresAt: number;
 }
 export interface Stats {
+  attachments: AttachmentUsage;
   active: number;
   expired: number;
   lastCleanup: {

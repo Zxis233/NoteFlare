@@ -12,6 +12,8 @@ import { EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { markdownParser } from "./lib/markdown";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { Attachments, type AttachmentHandle } from "./Attachments";
+import type { Attachment } from "../shared/attachments";
 import "./highlight.css";
 import DOMPurify from "dompurify";
 import {
@@ -23,8 +25,10 @@ import {
   Copy,
   Download,
   FileText,
+  Link,
   LoaderCircle,
   PanelRightClose,
+  Paperclip,
   Save,
   WrapText,
 } from "lucide-react";
@@ -92,6 +96,7 @@ export function Editor({
     "new" | "dirty" | "saving" | "saved" | "error"
   >("new");
   const [message, setMessage] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copying" | "copied">(
     "idle",
   );
@@ -101,6 +106,11 @@ export function Editor({
   const current = useRef("");
   const saved = useRef("");
   const saving = useRef(false);
+  const saveTask = useRef<Promise<boolean> | null>(null);
+  const editorView = useRef<EditorView | null>(null);
+  const attachmentPanel = useRef<AttachmentHandle>(null);
+  const insertionAnchors = useRef(new Map<string, number>());
+  const [dragging, setDragging] = useState(false);
   const mounted = useRef(true);
   const token = useRef(storage.get(`nf:create:${id}`));
   const dirty = useRef(false);
@@ -156,39 +166,53 @@ export function Editor({
   }, [id]);
 
   const save = useCallback(async () => {
-    if (!loaded || missing || saving.current || !dirty.current) return;
+    while (saveTask.current) {
+      if (!(await saveTask.current)) return false;
+    }
+    if (!loaded || missing || !mounted.current) return false;
+    if (!dirty.current) return !token.current;
     const text = current.current;
     if (new TextEncoder().encode(text).length > MAX_BYTES) {
       setStatus("error");
       setMessage("正文超过 200 KB，请精简后再保存。本地草稿仍然保留。");
-      return;
+      return false;
     }
-    if (token.current && !text.trim()) return;
+    if (token.current && !text.trim()) return false;
     saving.current = true;
     setStatus("saving");
+    const task = (async () => {
+      try {
+        const result = await api<Note>(`/notes/${id}`, "PUT", {
+          content: text,
+          ...(token.current ? { createToken: token.current } : {}),
+        });
+        token.current = null;
+        storage.remove(`nf:create:${id}`);
+        saved.current = text;
+        dirty.current = current.current !== text;
+        if (!dirty.current && storage.get(draftKey) === text)
+          storage.remove(draftKey);
+        if (mounted.current) {
+          setNote(result);
+          setStatus(dirty.current ? "dirty" : "saved");
+          setMessage("");
+        }
+        return true;
+      } catch (e) {
+        if (mounted.current) {
+          setStatus("error");
+          setMessage((e as Error).message);
+        }
+        return false;
+      } finally {
+        saving.current = false;
+      }
+    })();
+    saveTask.current = task;
     try {
-      const result = await api<Note>(`/notes/${id}`, "PUT", {
-        content: text,
-        ...(token.current ? { createToken: token.current } : {}),
-      });
-      token.current = null;
-      storage.remove(`nf:create:${id}`);
-      saved.current = text;
-      dirty.current = current.current !== text;
-      if (!dirty.current && storage.get(draftKey) === text)
-        storage.remove(draftKey);
-      if (mounted.current) {
-        setNote(result);
-        setStatus(dirty.current ? "dirty" : "saved");
-        setMessage("");
-      }
-    } catch (e) {
-      if (mounted.current) {
-        setStatus("error");
-        setMessage((e as Error).message);
-      }
+      return await task;
     } finally {
-      saving.current = false;
+      if (saveTask.current === task) saveTask.current = null;
     }
   }, [id, loaded, missing]);
 
@@ -241,10 +265,62 @@ export function Editor({
     () => [
       markdown(),
       Prec.highest(theme),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged)
+          insertionAnchors.current.forEach((position, key) =>
+            insertionAnchors.current.set(
+              key,
+              update.changes.mapPos(position, 1),
+            ),
+          );
+      }),
       ...(wrap ? [EditorView.lineWrapping] : []),
     ],
     [wrap],
   );
+  const captureAnchor = () => {
+    const key = crypto.randomUUID();
+    insertionAnchors.current.set(
+      key,
+      editorView.current?.state.selection.main.head ?? current.current.length,
+    );
+    return key;
+  };
+  async function insertAttachment(file: Attachment, anchor?: string) {
+    if (!mounted.current) return;
+    const view = editorView.current;
+    if (!view) throw new Error("编辑器尚未就绪，请从附件列表重新插入。");
+    const url = new URL(
+      `/api/notes/${id}/attachments/${file.id}/file`,
+      location.origin,
+    ).href;
+    if (current.current.includes(url)) return;
+    const label = file.name.replace(/[\\\[\]`*_<>]/g, (char) => `\\${char}`);
+    const snippet = `\n${file.mime.startsWith("image/") ? "!" : ""}[${label}](${url})\n`;
+    if (new TextEncoder().encode(current.current + snippet).length > MAX_BYTES)
+      throw new Error("正文已达大小上限，附件已保留在列表中。");
+    const position = Math.min(
+      (anchor ? insertionAnchors.current.get(anchor) : undefined) ??
+        view.state.selection.main.head,
+      view.state.doc.length,
+    );
+    view.dispatch({
+      changes: { from: position, insert: snippet },
+      selection: { anchor: position + snippet.length },
+    });
+    if (!(await save()))
+      throw new Error("引用尚未保存至云端，本地草稿已保留，请重试保存。");
+  }
+  async function ensureSaved() {
+    if (!current.current.trim())
+      throw new Error("请先输入非空正文，再上传附件。");
+    if (!(await save()) || token.current)
+      throw new Error("正文保存未成功，请稍后重试上传。");
+  }
+  async function attachmentActivity() {
+    const latest = await api<Note>(`/notes/${id}`);
+    if (mounted.current) setNote(latest);
+  }
   const togglePreview = () => {
     setPreview(!preview);
     storage.set("nf:preview", preview ? "off" : "on");
@@ -254,6 +330,24 @@ export function Editor({
     const timer = setTimeout(() => setCopyStatus("idle"), 1800);
     return () => clearTimeout(timer);
   }, [copyStatus]);
+  useEffect(() => {
+    if (!linkCopied) return;
+    const timer = setTimeout(() => setLinkCopied(false), 1800);
+    return () => clearTimeout(timer);
+  }, [linkCopied]);
+  async function copyNoteLink() {
+    try {
+      await navigator.clipboard.writeText(
+        new URL(`/n/${id}`, location.origin).href,
+      );
+      if (mounted.current) setLinkCopied(true);
+    } catch {
+      if (mounted.current)
+        setMessage(
+          "无法复制链接，请允许浏览器访问剪贴板，或从地址栏手动复制。",
+        );
+    }
+  }
   async function copyContent() {
     if (copyStatus === "copying") return;
     setCopyStatus("copying");
@@ -287,7 +381,38 @@ export function Editor({
     error: "保存失败",
   };
   return (
-    <section className="workspace">
+    <section
+      className={`workspace ${dragging ? "is-dragging" : ""}`}
+      onDragOverCapture={(e) => {
+        if (e.dataTransfer.types.includes("Files")) {
+          e.preventDefault();
+          setDragging(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node))
+          setDragging(false);
+      }}
+      onDropCapture={(e) => {
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          setDragging(false);
+          attachmentPanel.current?.add(files);
+        }
+      }}
+      onPasteCapture={(e) => {
+        const files = Array.from(e.clipboardData.files).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          attachmentPanel.current?.add(files);
+        }
+      }}
+    >
       <div className="page-heading">
         <div>
           <div className="eyebrow">YOUR EVERYDAY SCRATCHPAD</div>
@@ -296,10 +421,18 @@ export function Editor({
           </h1>
           <p>一段文字，一个链接。留住此刻的灵感。</p>
         </div>
-        <div className="note-badge">
-          <FileText size={14} />
+        <button
+          type="button"
+          className="note-badge"
+          onClick={() => void copyNoteLink()}
+          title={linkCopied ? "链接已复制" : "复制当前笔记链接"}
+          aria-label={linkCopied ? "链接已复制" : "复制当前笔记链接"}
+          aria-live="polite"
+          data-copied={linkCopied}
+        >
+          {linkCopied ? <Check size={14} /> : <Link size={14} />}
           <span>{id}</span>
-        </div>
+        </button>
       </div>
       <div
         className={`editor-card ${preview ? "with-preview" : ""} mobile-${mobileTab}`}
@@ -310,6 +443,15 @@ export function Editor({
             <span className="format-badge">Markdown</span>
           </div>
           <div className="toolbar-actions">
+            <button
+              className="icon-button"
+              aria-label="上传附件"
+              title="上传附件"
+              disabled={!loaded || missing || !settings.uploadsEnabled}
+              onClick={() => attachmentPanel.current?.pick()}
+            >
+              <Paperclip size={17} />
+            </button>
             <button
               className="icon-button desktop-only"
               onClick={() => setWrap(!wrap)}
@@ -381,6 +523,9 @@ export function Editor({
               </div>
             ) : (
               <CodeMirror
+                onCreateEditor={(view) => {
+                  editorView.current = view;
+                }}
                 value={content}
                 onChange={onChange}
                 extensions={extensions}
@@ -459,6 +604,17 @@ export function Editor({
           </div>
         </div>
       </div>
+      <Attachments
+        ref={attachmentPanel}
+        id={id}
+        exists={!!note}
+        settings={settings}
+        disabled={!loaded || missing}
+        ensureSaved={ensureSaved}
+        captureAnchor={captureAnchor}
+        insert={insertAttachment}
+        onActivity={attachmentActivity}
+      />
       <div className="workspace-footnote">
         <span>
           <Cloud size={14} />

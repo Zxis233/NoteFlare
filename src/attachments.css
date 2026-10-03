@@ -1,0 +1,150 @@
+.attachments-panel {
+  margin-top: 16px;
+  border: 1px solid #ffffff10;
+  background: #17191ee6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.attachment-input {
+  display: none;
+}
+.attachments-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.attachments-heading > .button:first-of-type {
+  padding-left: 4px;
+}
+.attachment-limit {
+  color: #7e8999;
+  font-size: 11px;
+  margin-left: auto;
+}
+.attachments-body {
+  padding: 0 16px 14px;
+}
+.attachment-help,
+.attachment-empty {
+  color: #7e8999;
+  font-size: 11px;
+  line-height: 1.8;
+  padding: 8px 0;
+}
+.attachment-notice {
+  color: #e5bc91;
+  font-size: 12px;
+  padding: 8px 0;
+}
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid #ffffff09;
+}
+.attachment-row > svg {
+  color: #b39579;
+  flex-shrink: 0;
+}
+.attachment-name {
+  flex: 1;
+  min-width: 0;
+}
+.attachment-name strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 400;
+}
+.attachment-name small {
+  display: block;
+  color: #7e8999;
+  font-size: 10px;
+  margin-top: 5px;
+}
+.attachment-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.attachment-job {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid #ffffff09;
+}
+.attachment-job > div:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.attachment-job small {
+  display: block;
+  color: #c2a383;
+  margin-top: 4px;
+  font-size: 10px;
+}
+.attachment-job progress {
+  width: 90px;
+  height: 4px;
+  accent-color: #e7b080;
+}
+.attachment-settings {
+  margin-top: 24px;
+}
+.attachment-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+.attachment-settings .upload-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.attachment-settings input[type="checkbox"] {
+  width: 16px;
+  min-height: 16px;
+  accent-color: #e7b080;
+}
+.attachment-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  color: #9aa4b3;
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 10px 0 22px;
+}
+.workspace.is-dragging .editor-card {
+  outline: 2px dashed #e7b080;
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .attachment-limit {
+    display: none;
+  }
+  .attachments-heading > .button:first-of-type {
+    margin-right: auto;
+  }
+  .attachment-row {
+    flex-wrap: wrap;
+  }
+  .attachment-name {
+    min-width: 100px;
+  }
+  .attachment-actions .button {
+    padding: 7px;
+    font-size: 11px;
+  }
+  .attachment-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}

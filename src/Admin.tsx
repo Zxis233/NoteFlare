@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import type { Settings, Stats } from "../shared/types";
+import { MiB, formatBytes } from "../shared/attachments";
+import "./attachments.css";
 
 export function Admin({
   settings,
@@ -67,12 +69,19 @@ export function Admin({
           deleted: number;
           remaining: number;
           cutoff: number;
+          attachments: {
+            deleted: number;
+            remaining: number;
+            actionable: number;
+          };
         }>("/admin/cleanup", "POST", { kind, confirmation, cutoff });
         cutoff = result.cutoff;
         total += result.deleted;
         setMessage(`已清理 ${total} 篇，剩余 ${result.remaining} 篇。`);
-        if (!result.remaining) {
-          setMessage(`清理完成，共删除 ${total} 篇笔记。`);
+        if (!result.remaining && !result.attachments.actionable) {
+          setMessage(
+            `清理完成，共删除 ${total} 篇笔记。${result.attachments.remaining ? `仍有 ${result.attachments.remaining} 个附件等待上传保护期结束或删除重试；每日任务会继续处理。` : "附件回收已完成。"}`,
+          );
           break;
         }
         if (i === 199)
@@ -247,12 +256,113 @@ export function Admin({
           </button>
         </section>
       </div>
+      <section className="settings-panel attachment-settings">
+        <h2>附件与容量</h2>
+        <label className="upload-switch">
+          <input
+            type="checkbox"
+            checked={form.uploadsEnabled}
+            onChange={(e) => set("uploadsEnabled", e.target.checked)}
+          />
+          允许上传新附件
+        </label>
+        <div className="attachment-usage">
+          <span>已存附件 {stats?.attachments?.count ?? "—"} 个</span>
+          <span>已用 {formatBytes(stats?.attachments?.usedBytes ?? 0)}</span>
+          <span>
+            上传预留 {formatBytes(stats?.attachments?.reservedBytes ?? 0)}
+          </span>
+          <span>
+            待回收 {formatBytes(stats?.attachments?.deletingBytes ?? 0)}（
+            {stats?.attachments?.deletingCount ?? 0} 个）
+          </span>
+          <span>删除失败 {stats?.attachments?.failedCount ?? 0} 个</span>
+          <span>
+            剩余{" "}
+            {formatBytes(
+              Math.max(
+                0,
+                form.maxTotalBytes -
+                  (stats?.attachments?.usedBytes ?? 0) -
+                  (stats?.attachments?.reservedBytes ?? 0) -
+                  (stats?.attachments?.deletingBytes ?? 0),
+              ),
+            )}
+          </span>
+        </div>
+        <div className="attachment-settings-grid">
+          <div>
+            <label htmlFor="max-file">单文件上限（MiB，1–50）</label>
+            <input
+              id="max-file"
+              type="number"
+              min="1"
+              max="50"
+              value={form.maxFileBytes / MiB}
+              onChange={(e) =>
+                set("maxFileBytes", Number(e.target.value) * MiB)
+              }
+            />
+          </div>
+          <div>
+            <label htmlFor="max-count">每篇附件数量（1–100）</label>
+            <input
+              id="max-count"
+              type="number"
+              min="1"
+              max="100"
+              value={form.maxNoteFiles}
+              onChange={(e) => set("maxNoteFiles", Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label htmlFor="max-note">每篇总容量（MiB，最大 1024）</label>
+            <input
+              id="max-note"
+              type="number"
+              min="1"
+              max="1024"
+              value={form.maxNoteBytes / MiB}
+              onChange={(e) =>
+                set("maxNoteBytes", Number(e.target.value) * MiB)
+              }
+            />
+          </div>
+          <div>
+            <label htmlFor="max-total">全站总容量（MiB，1024 = 1 GiB）</label>
+            <input
+              id="max-total"
+              type="number"
+              min="1"
+              max="102400"
+              value={form.maxTotalBytes / MiB}
+              onChange={(e) =>
+                set("maxTotalBytes", Number(e.target.value) * MiB)
+              }
+            />
+          </div>
+        </div>
+        <p className="help">
+          容量需满足单文件 ≤ 每篇 ≤
+          全站。调低上限不删除已有文件；关闭上传不影响已有附件下载和删除。临时上传超过
+          24 小时后，由每日清理任务回收，实际可能保留接近 48 小时。
+        </p>
+        <button
+          className="button primary"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={() => void save()}
+        >
+          <Save size={15} />
+          保存附件设置
+        </button>
+      </section>
       <section className="cleanup-panel">
         <div>
           <h2>
             <Trash2 size={17} /> 数据清理
           </h2>
-          <p>清理操作不可撤销。网站设置不会被删除。</p>
+          <p>同时清理附件及失败上传。删除失败会重试，网站设置不会被删除。</p>
         </div>
         <div className="cleanup-actions">
           <button

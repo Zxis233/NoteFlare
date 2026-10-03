@@ -2,8 +2,14 @@ import { Hono } from "hono";
 import { createRemoteJWKSet, jwtVerify, SignJWT } from "jose";
 import { DAY, MAX_BYTES, type Settings, type Note } from "../shared/types";
 import { parseSettings, randomId, validContent, validId } from "./helpers";
+import {
+  attachmentRoutes,
+  attachmentUsage,
+  collectAttachments,
+  type AttachmentBindings,
+} from "./attachments";
 
-interface Bindings {
+interface Bindings extends AttachmentBindings {
   DB: D1Database;
   ASSETS: Fetcher;
   CREATE_LIMITER: RateLimit;
@@ -35,11 +41,13 @@ function secret(request: Request, env: Bindings) {
 async function settings(db: D1Database): Promise<Settings> {
   const row = await db
     .prepare(
-      "SELECT background_url AS backgroundUrl, overlay, link_length AS linkLength, retention_days AS retentionDays FROM settings WHERE id = 1",
+      `SELECT background_url AS backgroundUrl, overlay, link_length AS linkLength, retention_days AS retentionDays,
+       uploads_enabled AS uploadsEnabled, max_file_bytes AS maxFileBytes, max_note_files AS maxNoteFiles,
+       max_note_bytes AS maxNoteBytes, max_total_bytes AS maxTotalBytes FROM settings WHERE id = 1`,
     )
     .first<Settings>();
   if (!row) throw new Error("Database migrations have not been applied");
-  return row;
+  return { ...row, uploadsEnabled: Boolean(row.uploadsEnabled) };
 }
 async function authorize(request: Request, env: Bindings): Promise<boolean> {
   if (localMode(request, env)) return true;
@@ -96,6 +104,16 @@ app.use("/api/*", async (c, next) => {
         origin === "http://localhost:5173");
     if (origin && origin !== expected && !allowedLocal)
       return c.json({ error: "不允许跨站请求。" }, 403);
+    // Binary upload has its own streaming size checks; never JSON-buffer it.
+    if (
+      c.req.method === "PUT" &&
+      /^\/api\/notes\/[^/]+\/attachments\/[^/]+\/content$/.test(c.req.path)
+    ) {
+      if (c.req.header("content-type") !== "application/octet-stream")
+        return c.json({ error: "上传必须为二进制文件。" }, 415);
+      await next();
+      return;
+    }
     if (!c.req.header("content-type")?.startsWith("application/json"))
       return c.json({ error: "请求必须使用 JSON。" }, 415);
     // Bound the actual stream, not just Content-Length (which can be absent).
@@ -168,12 +186,14 @@ app.post("/api/new", async (c) => {
 });
 app.use("/api/notes/*", async (c, next) => {
   const ip = c.req.header("cf-connecting-ip") || "local";
-  const limiter =
-    c.req.method === "GET" ? c.env.READ_LIMITER : c.env.WRITE_LIMITER;
+  const limiter = ["GET", "HEAD"].includes(c.req.method)
+    ? c.env.READ_LIMITER
+    : c.env.WRITE_LIMITER;
   if (!(await limiter.limit({ key: ip })).success)
     return c.json({ error: "访问过于频繁，请稍后重试。" }, 429);
   await next();
 });
+app.route("/api/notes", attachmentRoutes);
 app.get("/api/notes/:id", async (c) => {
   const id = c.req.param("id");
   if (!validId(id)) return c.json({ error: "笔记不存在或已过期。" }, 404);
@@ -258,6 +278,7 @@ app.get("/api/admin/stats", async (c) => {
     active: (results[0].results[0] as { count: number }).count,
     expired: (results[1].results[0] as { count: number }).count,
     lastCleanup: results[2].results[0],
+    attachments: await attachmentUsage(c.env.DB),
   });
 });
 app.put("/api/admin/settings", async (c) => {
@@ -265,54 +286,66 @@ app.put("/api/admin/settings", async (c) => {
   if (!config)
     return c.json(
       {
-        error:
-          "设置无效：背景需为 HTTPS 地址，链接 3–8 位，保留期限 1–365 天。",
+        error: "设置无效：请检查背景、链接、保留期限及附件限制范围。",
       },
       400,
     );
   await c.env.DB.prepare(
-    "UPDATE settings SET background_url = ?, overlay = ?, link_length = ?, retention_days = ? WHERE id = 1",
+    `UPDATE settings SET background_url = ?, overlay = ?, link_length = ?, retention_days = ?,
+     uploads_enabled=?, max_file_bytes=?, max_note_files=?, max_note_bytes=?, max_total_bytes=? WHERE id = 1`,
   )
     .bind(
       config.backgroundUrl,
       config.overlay,
       config.linkLength,
       config.retentionDays,
+      config.uploadsEnabled ? 1 : 0,
+      config.maxFileBytes,
+      config.maxNoteFiles,
+      config.maxNoteBytes,
+      config.maxTotalBytes,
     )
     .run();
   return c.json(config);
 });
 
 async function cleanup(
-  db: D1Database,
+  env: Bindings,
   kind: "expired" | "all",
   cutoff: number,
   batches: number,
 ) {
+  const db = env.DB;
   let deleted = 0;
   const column = kind === "all" ? "created_at" : "expires_at";
   try {
     for (let i = 0; i < batches; i++) {
       const result = await db
         .prepare(
-          `DELETE FROM notes WHERE id IN (SELECT id FROM notes WHERE ${column} <= ? LIMIT 500)`,
+          `DELETE FROM notes WHERE id IN (SELECT id FROM notes WHERE ${column} <= ? LIMIT 500) RETURNING id`,
         )
         .bind(cutoff)
-        .run();
-      deleted += result.meta.changes;
-      if (result.meta.changes < 500) break;
+        .all();
+      deleted += result.results.length;
+      if (result.results.length < 500) break;
     }
     const remaining = await db
       .prepare(`SELECT COUNT(*) AS count FROM notes WHERE ${column} <= ?`)
       .bind(cutoff)
       .first<number>("count");
+    const attachments = await collectAttachments(env, batches * 20);
     await db
       .prepare(
         "UPDATE maintenance SET ran_at = ?, deleted = ?, kind = ?, status = ? WHERE id = 1",
       )
-      .bind(Date.now(), deleted, kind, remaining ? "partial" : "complete")
+      .bind(
+        Date.now(),
+        deleted,
+        kind,
+        remaining || attachments.remaining ? "partial" : "complete",
+      )
       .run();
-    return { deleted, remaining: remaining || 0 };
+    return { deleted, remaining: remaining || 0, attachments };
   } catch (error) {
     try {
       await db
@@ -340,7 +373,7 @@ app.post("/api/admin/cleanup", async (c) => {
   const cutoff = body.cutoff ?? Date.now();
   if (!Number.isSafeInteger(cutoff) || cutoff < 0 || cutoff > Date.now())
     return c.json({ error: "无效清理时间。" }, 400);
-  return c.json({ ...(await cleanup(c.env.DB, body.kind, cutoff, 1)), cutoff });
+  return c.json({ ...(await cleanup(c.env, body.kind, cutoff, 1)), cutoff });
 });
 
 app.all("/api/*", (c) => c.json({ error: "接口不存在。" }, 404));
@@ -379,6 +412,6 @@ export default {
     env: Bindings,
     ctx: ExecutionContext,
   ) {
-    ctx.waitUntil(cleanup(env.DB, "expired", Date.now(), 10));
+    ctx.waitUntil(cleanup(env, "expired", Date.now(), 10));
   },
 };

@@ -1,4 +1,5 @@
 import { MAX_BYTES, type Settings } from "../shared/types";
+import { attachmentDefaults, MiB } from "../shared/attachments";
 
 export const validId = (id: string) => /^[A-Za-z0-9]{3,8}$/.test(id);
 export const byteLength = (text: string) =>
@@ -22,7 +23,7 @@ export function randomId(length: number): string {
 
 export function parseSettings(value: unknown): Settings | null {
   if (!value || typeof value !== "object") return null;
-  const s = value as Settings;
+  const s = { ...attachmentDefaults, ...value } as Settings;
   if (typeof s.backgroundUrl !== "string" || s.backgroundUrl.length > 2048)
     return null;
   if (s.backgroundUrl) {
@@ -49,10 +50,43 @@ export function parseSettings(value: unknown): Settings | null {
     s.retentionDays > 365
   )
     return null;
+  if (typeof s.uploadsEnabled !== "boolean") return null;
+  if (
+    !Number.isSafeInteger(s.maxFileBytes) ||
+    s.maxFileBytes < MiB ||
+    s.maxFileBytes > 50 * MiB ||
+    s.maxFileBytes % MiB
+  )
+    return null;
+  if (
+    !Number.isSafeInteger(s.maxNoteFiles) ||
+    s.maxNoteFiles < 1 ||
+    s.maxNoteFiles > 100
+  )
+    return null;
+  if (
+    !Number.isSafeInteger(s.maxNoteBytes) ||
+    s.maxNoteBytes < s.maxFileBytes ||
+    s.maxNoteBytes > 1024 * MiB ||
+    s.maxNoteBytes % MiB
+  )
+    return null;
+  if (
+    !Number.isSafeInteger(s.maxTotalBytes) ||
+    s.maxTotalBytes < s.maxNoteBytes ||
+    s.maxTotalBytes > 100 * 1024 * MiB ||
+    s.maxTotalBytes % MiB
+  )
+    return null;
   return {
     backgroundUrl: s.backgroundUrl,
     overlay: s.overlay,
     linkLength: s.linkLength,
     retentionDays: s.retentionDays,
+    uploadsEnabled: s.uploadsEnabled,
+    maxFileBytes: s.maxFileBytes,
+    maxNoteFiles: s.maxNoteFiles,
+    maxNoteBytes: s.maxNoteBytes,
+    maxTotalBytes: s.maxTotalBytes,
   };
 }

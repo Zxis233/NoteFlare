@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { request as httpRequest } from 'node:http';
+import { checkAttachments } from './attachment-checks.mjs';
 
 // Uses its own local D1 state. Never touches the developer's DB or a remote DB.
 const cli = resolve('node_modules/wrangler/bin/wrangler.js');
@@ -86,7 +87,11 @@ try {
   const malformed = await fetch(root + '/api/new', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400);
   assert.equal((await fetch(root + '/n/abc')).status, 200, 'SPA deep links work');
+  await checkAttachments({root,request,sql:command=>wrangler(['d1','execute','DB','--local',...config,'--command',command])});
   console.log('Integration passed: create, save, collisions, UTF-8 limit, no-op expiry, settings, CSRF, public admin rejection, expiration, scheduled cleanup and SPA.');
+} catch (error) {
+  console.error(logs.slice(-12000));
+  throw error;
 } finally {
   // Wrangler owns workerd; gracefully close its input before terminating the CLI.
   server.stdin.end();

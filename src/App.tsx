@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { api, storage } from "./api";
 import type { Settings } from "../shared/types";
+import { attachmentDefaults } from "../shared/attachments";
 
 const Editor = lazy(() =>
   import("./Editor").then((module) => ({ default: module.Editor })),
@@ -26,6 +27,7 @@ const Admin = lazy(() =>
 );
 
 const defaults: Settings = {
+  ...attachmentDefaults,
   backgroundUrl: "",
   overlay: 0.75,
   linkLength: 8,

@@ -7,6 +7,7 @@ import {
   validId,
 } from "./helpers";
 import { MAX_BYTES } from "../shared/types";
+import { attachmentDefaults } from "../shared/attachments";
 
 describe("content and settings boundaries", () => {
   it("enforces UTF-8 bytes instead of JS character count", () => {
@@ -23,7 +24,7 @@ describe("content and settings boundaries", () => {
       linkLength: 8,
       retentionDays: 30,
     };
-    expect(parseSettings(base)).toEqual(base);
+    expect(parseSettings(base)).toEqual({ ...base, ...attachmentDefaults });
     for (const change of [
       { backgroundUrl: "javascript:alert(1)" },
       { backgroundUrl: "http://example.com/a.png" },

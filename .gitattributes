@@ -1,0 +1,2 @@
+# D1 remote trigger parsing is sensitive to CRLF in SQL migrations.
+migrations/*.sql text eol=lf

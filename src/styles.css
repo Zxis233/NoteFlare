@@ -286,7 +286,27 @@ main {
     border-radius: 5px;
     color: #8c919c;
     font: 12px var(--font-mono);
-    background: #181a20a6
+    background: #181a20a6;
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color .15s, background .15s, border-color .15s
+}
+
+.note-badge:hover {
+    color: #efb277;
+    border-color: #efb27740;
+    background: #252127
+}
+
+.note-badge:active {
+    background: #342b24
+}
+
+.note-badge[data-copied="true"] {
+    color: #a8c99a;
+    border-color: #a8c99a40
 }
 
 .editor-card {
