@@ -233,6 +233,7 @@ export function Editor({
     () =>
       DOMPurify.sanitize(markdownParser.render(previewContent), {
         USE_PROFILES: { html: true },
+        ADD_ATTR: ["target"],
       }),
     [previewContent],
   );

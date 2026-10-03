@@ -96,6 +96,29 @@ export const markdownParser = new MarkdownIt({
   },
 });
 
+// Apply to explicit Markdown links and linkified URLs alike. Relative web
+// links open separately too; fragments and non-web protocols keep defaults.
+markdownParser.renderer.rules.link_open = (
+  tokens,
+  index,
+  options,
+  _env,
+  self,
+) => {
+  const token = tokens[index];
+  const href = token.attrGet("href") ?? "";
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href)?.[1]?.toLowerCase();
+  if (
+    href &&
+    !href.startsWith("#") &&
+    (!scheme || scheme === "http" || scheme === "https")
+  ) {
+    token.attrSet("target", "_blank");
+    token.attrSet("rel", "noopener noreferrer");
+  }
+  return self.renderToken(tokens, index, options);
+};
+
 // Wrap both fenced and indented blocks; keep the code element untouched so
 // textContent remains the decoded source, without the copy button's label.
 for (const rule of ["fence", "code_block"] as const) {
